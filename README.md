@@ -174,15 +174,14 @@ Upload the commit to GitHub.
 **Why I tested in `terraform console`:**
 `terraform console` is an interactive prompt to try Terraform functions without creating anything. `yamldecode(file("users.yaml"))` is the exact expression the Terraform code will use in the next step, so if it works here, the data is ready.
 
+<img width="910" height="1098" alt="image" src="https://github.com/user-attachments/assets/93064c4b-9865-45cc-9f87-363623868ba5" />
+
 **Key terms:**
 - **YAML:** a human-readable format for data, built on indentation.
 - **Source of truth:** the single authoritative place where something is defined.
 - **List:** an ordered set of items (`departments`).
 - **Map:** a set of named entries (`users`, keyed by username).
 - **`terraform console`:** an interactive prompt to test expressions.
-
-**What I learned:**
-- _(2 or 3 points in your own words)_
 
 **Commands used (in order):**
 
@@ -198,48 +197,49 @@ Upload the commit to GitHub.
    terraform console
 ```
 
-4. Read the YAML file and convert it into Terraform data; confirms the file has no syntax errors.
+Read the YAML file and convert it into Terraform data; confirms the file has no syntax errors.
 ```
    yamldecode(file("users.yaml"))
 ```
 
-5. Show only the list of departments.
+Show only the list of departments.
 ```
    yamldecode(file("users.yaml")).departments
 ```
 
-6. Show one user's job title, to confirm individual values can be reached by username.
+Show one user's job title, to confirm individual values can be reached by username.
 ```
    yamldecode(file("users.yaml")).users["sam.chen"].job_title
 ```
 
-7. Leave the console.
+Leave the console.
 ```
    exit
 ```
 
-8. Go back to the top of the repository.
+Go back to the top of the repository.
 ```bash
    cd ..
 ```
 
-9. See what changed; Git shows the new `users.yaml`.
+See what changed; Git shows the new `users.yaml`.
 ```bash
    git status
 ```
 
-10. Stage the file for the next save point.
+Stage the file for the next save point.
 ```bash
     git add .
 ```
 
-11. Create the save point with a message.
+Create the save point with a message.
 ```bash
     git commit -m "Step 3: users.yaml source of truth"
 ```
 
-12. Upload the commit to GitHub.
+Upload the commit to GitHub.
 ```bash
     git push
 ```
+<img width="1572" height="702" alt="image" src="https://github.com/user-attachments/assets/d6ff4894-8682-475d-bad1-0beb0e1a7d76" />
 
