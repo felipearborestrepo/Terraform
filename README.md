@@ -241,5 +241,6 @@ Upload the commit to GitHub.
 ```bash
     git push
 ```
-<img width="1572" height="702" alt="image" src="https://github.com/user-attachments/assets/d6ff4894-8682-475d-bad1-0beb0e1a7d76" />
+<img width="1572" height="702" alt="EC95E62C-0F15-4E27-A1A6-345532A7C499" src="https://github.com/user-attachments/assets/87e763c7-74af-4109-a6ed-6701feda842a" />
+
 
