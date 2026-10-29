@@ -1,4 +1,3 @@
-<img width="857" height="483" alt="Screenshot 2026-10-27 at 15 30 49" src="https://github.com/user-attachments/assets/f7620c4e-6482-4db9-8da5-38728b4faecb" />
 # Identity Platform as Code: Entra ID + Okta with Terraform
 
 Automated identity lifecycle for a fictional company, **NovaLab**. Users and groups are defined once in a YAML file, then created in **Microsoft Entra ID** and **Okta** with **Terraform**. Every change is checked by **GitHub Actions** and applied through **HCP Terraform** with human approval.
