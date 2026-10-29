@@ -243,4 +243,380 @@ Upload the commit to GitHub.
 ```
 <img width="1572" height="702" alt="EC95E62C-0F15-4E27-A1A6-345532A7C499" src="https://github.com/user-attachments/assets/87e763c7-74af-4109-a6ed-6701feda842a" />
 
+### Step 4: Entra users
 
+**Goal:** Turn each person in `users.yaml` into an Entra ID user account, without listing anyone in the code.
+
+**What I did:**
+1. Wrote `entra/main.tf`: a data source, locals, random passwords, and users.
+2. Formatted and validated the code.
+3. Ran `terraform plan` to preview the result: 10 resources (5 passwords, 5 users).
+
+**Why it matters:**
+The code has **no names in it**. It says "for each person in the YAML file, make a user." Adding a sixth employee means adding 4 lines to `users.yaml`; the code doesn't change. This is the "joiner" process automated.
+
+**The code, block by block:**
+
+`data "azuread_domains" "tenant"`
+- A **data source** *reads* something that already exists; it never creates anything.
+- It asks Entra for the tenant's built-in domain (`arbofelipe2003outlook.onmicrosoft.com`), so the domain isn't typed by hand.
+
+`locals { }`
+- **Local values**: named shortcuts used throughout the file.
+- `domain`: the domain found by the data source.
+- `config`: the whole YAML file, read with `file()` and converted with `yamldecode()`.
+- `users`: just the `users` part of it.
+- `path.module` = "the folder this file is in," so the path works from anywhere.
+
+`resource "random_password" "user"`
+- Generates a 20-character password with special characters, one per user.
+- Passwords are never written by a person and never appear in the code.
+
+`resource "azuread_user" "user"`
+- Creates the actual Entra accounts.
+
+| Line | Meaning |
+|---|---|
+| `for_each = local.users` | Repeat this block once per user in the YAML |
+| `each.key` | The username, like `alex.rivera` |
+| `each.value` | That user's details (display name, department, title) |
+| `"${each.key}@${local.domain}"` | Builds the sign-in name: `alex.rivera@...onmicrosoft.com`. `${ }` inserts a value into text |
+| `password = random_password.user[each.key].result` | A **reference**: use the password generated for this same user |
+| `force_password_change = true` | The user must set their own password at first sign-in |
+| `account_enabled = try(each.value.enabled, true)` | Use `enabled` if the user has it; otherwise default to `true`. Only Taylor is disabled |
+
+<img width="894" height="743" alt="Screenshot 2026-10-28 at 17 57 17" src="https://github.com/user-attachments/assets/f2ca2ec7-93a2-4e49-b02a-6a8a35111660" />
+
+**Resource names:** `resource "azuread_user" "user"` has two labels:
+- `azuread_user` = the **type** (what kind of thing; defined by the provider).
+- `user` = my **name** for it inside the code, used in references. With `for_each`, each copy is addressed by key: `azuread_user.user["sam.chen"]`.
+
+**Reading the plan:**
+- `+` = will be created.
+- `(sensitive value)` = Terraform hides passwords, even in the preview.
+- `(known after apply)` = a value Entra assigns when the user is created, like the object ID.
+
+**Key terms:**
+- **Resource:** something Terraform creates and manages.
+- **Data source:** something Terraform only reads.
+- **Local value:** a named shortcut inside the configuration.
+- **`for_each`:** creates one copy of a block per item in a map or set.
+- **Reference:** using one resource's value in another (`random_password.user[each.key].result`).
+- **`terraform fmt`:** fixes spacing and alignment automatically.
+- **`terraform validate`:** checks the code for errors without contacting Entra.
+- **`terraform plan`:** a preview of what would change; nothing is created.
+
+
+**Commands used (in order):**
+
+1. *(In VS Code: created `entra/main.tf`, then saved.)*
+
+2. Go into the Entra folder.
+```bash
+   cd entra
+```
+
+3. Fix spacing and alignment automatically, so the code follows Terraform's standard style.
+```bash
+   terraform fmt
+```
+
+4. Check the code for errors without contacting Entra.
+```bash
+   terraform validate
+```
+
+<img width="488" height="101" alt="Screenshot 2026-10-28 at 18 00 02" src="https://github.com/user-attachments/assets/0b31440c-77a6-44b7-9799-877c3724ea7e" />
+
+5. Preview what would be created; nothing changes yet. Expected: 10 to add.
+```bash
+   terraform plan
+```
+
+<img width="846" height="598" alt="Screenshot 2026-10-28 at 18 01 35" src="https://github.com/user-attachments/assets/8248556e-da89-4203-89bf-9190c8284e96" />
+
+6. Go back to the top of the repository.
+```bash
+   cd ..
+```
+
+7. See what changed; Git shows the new `main.tf`.
+```bash
+   git status
+```
+
+8. Stage the file for the next save point.
+```bash
+   git add .
+```
+
+9. Create the save point with a message.
+```bash
+   git commit -m "Step 4: Entra users"
+```
+
+10. Upload the commit to GitHub.
+```bash
+    git push
+```
+
+
+
+### Step 5: Entra groups and the dynamic group
+
+**Goal:** Organize users into groups automatically: one static group per department, plus one dynamic group that Entra keeps up to date by itself.
+
+**What I did:**
+1. Added three resources to `entra/main.tf`: department groups, group memberships, and a dynamic group.
+2. Formatted, validated and previewed the code: 20 resources in total.
+
+**Why it matters:**
+In identity, **access is given to groups, not to individual people**. An app is assigned to `SG-IT`, and everyone in `SG-IT` gets it. So putting people in the right groups automatically is the core of access management:
+- **Joiner:** a new employee lands in their department group on day one.
+- **Mover:** change `department` in the YAML, and they move to the new group.
+- **Leaver:** set `enabled: false`, and the dynamic group drops them on its own.
+
+**The code, block by block:**
+
+`resource "azuread_group" "department"`
+- Creates one **security group** per department: `SG-Finance`, `SG-HR`, `SG-IT`, `SG-Security`.
+- `toset(local.config.departments)`: `for_each` only accepts a **map** or a **set**, and `departments` is a **list**, so `toset()` converts it. With a set, `each.key` is the department name.
+- `security_enabled = true`: a group used to **grant access** (as opposed to an email distribution group).
+
+`resource "azuread_group_member" "department"`
+- Links each user to their department's group, one membership per user.
+
+| Line | Meaning |
+|---|---|
+| `azuread_group.department[each.value.department]` | Find the group matching this user's department (for Alex: `SG-Finance`) |
+| `.object_id` | Entra's unique ID for that group |
+| `azuread_user.user[each.key].object_id` | This user's unique ID |
+
+- These references also tell Terraform the **order**: create the users and groups first, then the memberships.
+
+`resource "azuread_group" "synced_users"`
+- A **dynamic group**: I don't add members. Entra adds and removes them by itself, based on a **rule**.
+- `types = ["DynamicMembership"]`: makes it dynamic.
+- The rule: `(user.companyName -eq "NovaLab") and (user.accountEnabled -eq true)` = every user whose company is NovaLab **and** whose account is enabled.
+- Taylor Morgan is disabled (`enabled: false`), so Taylor is **excluded automatically**.
+- `\"` = a quote mark **inside** text. Without the backslash, the quote would end the text early.
+
+<img width="840" height="676" alt="Screenshot 2026-10-29 at 16 57 55" src="https://github.com/user-attachments/assets/3c837acb-0dbc-42de-acf2-783ccdaad915" />
+
+**Static vs dynamic groups:**
+
+| | Static (department groups) | Dynamic (Synced Users) |
+|---|---|---|
+| Who adds members | Terraform (or an admin) | Entra, by a rule |
+| Updates when a user changes | When Terraform runs | Automatically, within minutes |
+| Licensing | Free | Requires Entra ID P1 |
+
+**Key terms:**
+- **Security group:** a group used to grant access to apps and resources.
+- **Dynamic group:** a group whose members are calculated from user attributes.
+- **Object ID:** Entra's unique identifier for a user or group.
+- **`toset()`:** converts a list into a set, so `for_each` can use it.
+- **Joiner / Mover / Leaver:** the three identity lifecycle events: new hire, role change, departure.
+
+**Commands used (in order):**
+
+1. *(In VS Code: added the three group resources to the bottom of `entra/main.tf`, then saved.)*
+
+2. Go into the Entra folder.
+```bash
+   cd entra
+```
+
+3. Fix spacing and alignment automatically.
+```bash
+   terraform fmt
+```
+
+4. Check the code for errors without contacting Entra.
+```bash
+   terraform validate
+```
+<img width="477" height="86" alt="Screenshot 2026-10-29 at 16 59 41" src="https://github.com/user-attachments/assets/29c76de9-3e34-4dcb-b1fe-557ff7df7747" />
+
+5. Preview what would be created; nothing changes yet. Expected: 20 to add.
+```bash
+   terraform plan
+```
+
+<img width="1126" height="790" alt="Screenshot 2026-10-29 at 17 01 51" src="https://github.com/user-attachments/assets/65858ba6-fc18-4804-b4c4-5de600b2e171" />
+
+<img width="471" height="282" alt="Screenshot 2026-10-29 at 17 02 40" src="https://github.com/user-attachments/assets/bc9935aa-7cd2-41a9-bf9f-7396593f53f2" />
+
+6. Go back to the top of the repository.
+```bash
+   cd ..
+```
+
+7. See what changed; Git shows `main.tf` as modified.
+```bash
+   git status
+```
+
+8. Stage the change for the next save point.
+```bash
+   git add .
+```
+
+9. Create the save point with a message.
+```bash
+   git commit -m "Step 5: Entra groups and dynamic group"
+```
+
+10. Upload the commit to GitHub.
+```bash
+    git push
+```
+
+<img width="620" height="336" alt="Screenshot 2026-10-29 at 17 06 01" src="https://github.com/user-attachments/assets/21435b11-dee2-4dd0-90f2-973cc61b41f3" />
+
+
+### Step 6: Outputs, apply, and state
+
+**Goal:** Create everything in Entra ID, confirm the result, and understand how Terraform remembers what it built.
+
+**What I did:**
+1. Added `outputs.tf` to display useful results after apply.
+2. Ran `terraform apply`: 20 resources created.
+3. Verified the users and groups in the Entra admin center.
+4. Ran `terraform plan` again: no changes.
+5. Explored Terraform's state with `state list`, `state show` and `output`.
+
+**Why it matters:**
+One command created 5 users, 4 groups, 5 memberships and a dynamic group, the same way every time. Clicking this through the portal takes about 30 minutes and invites mistakes.
+
+**Outputs:**
+An output prints a value after apply, for example each user's sign-in name.
+
+`{ for key, user in azuread_user.user : key => user.user_principal_name }` is a **for expression**: "for each user, make a pair of username → sign-in name." The result:
+
+```
+user_upns = {
+  "alex.rivera" = "alex.rivera@arbofelipe2003outlook.onmicrosoft.com"
+  ...
+}
+```
+
+**The Terraform loop:**
+
+| Command | What it does | Changes anything? |
+|---|---|---|
+| `terraform plan` | Compares the code, the state, and the real world; shows the difference | No |
+| `terraform apply` | Shows the plan, asks for `yes`, then makes the changes | Yes |
+
+**Plan, then read, then apply.** The plan is the moment to catch mistakes, before they reach real accounts.
+
+**Why the second plan said "No changes":**
+Terraform is **declarative**: the code describes the **end result** ("these 5 users should exist"), not the steps. Running it again doesn't create duplicates; it sees everything already matches. This is called **idempotent**.
+
+**State: Terraform's memory**
+- After apply, Terraform writes `terraform.tfstate`, recording every resource it created and its real ID in Entra.
+- That's how it knows `azuread_user.user["sam.chen"]` is a specific user, and what to update or destroy later.
+- The state contains the generated **passwords**, which is why `.gitignore` blocks it (Step 1). `git status` confirmed it never reached GitHub.
+
+**The dynamic group in action:**
+NovaLab Synced Users has 4 members; Taylor Morgan, whose account is disabled, was excluded by Entra's rule, with no manual work.
+
+**Key terms:**
+- **Output:** a value displayed after apply.
+- **For expression:** builds a new map or list from an existing one.
+- **Declarative:** describe the end result, not the steps.
+- **Idempotent:** running it again gives the same result, with no duplicates.
+- **State:** Terraform's record of what it manages and the real IDs.
+- **`terraform state list` / `state show`:** list everything in state / show one item in detail.
+- 
+
+**Commands used (in order):**
+
+*(In VS Code: created `entra/outputs.tf`, then saved.)*
+
+<img width="1111" height="383" alt="Screenshot 2026-10-29 at 17 54 43" src="https://github.com/user-attachments/assets/ae77bf43-48d4-4f8d-93a0-6a088861145f" />
+
+Go into the Entra folder.
+```bash
+   cd entra
+```
+
+Fix spacing and alignment automatically.
+```bash
+   terraform fmt
+```
+
+Check the code for errors.
+```bash
+   terraform validate
+```
+
+<img width="488" height="96" alt="Screenshot 2026-10-29 at 17 57 00" src="https://github.com/user-attachments/assets/6c098c2a-7512-461c-be21-887d7d32a7e8" />
+
+Show the plan, then create everything after I typed `yes` (20 resources).
+```bash
+   terraform apply
+```
+
+<img width="1084" height="777" alt="Screenshot 2026-10-29 at 17 58 44" src="https://github.com/user-attachments/assets/df09c891-ac37-4f6f-bc9c-277b7c3a9038" />
+
+<img width="994" height="801" alt="Screenshot 2026-10-29 at 18 00 54" src="https://github.com/user-attachments/assets/5ff6c51c-f23c-4523-afed-17505e4d8308" />
+
+<img width="1099" height="642" alt="Screenshot 2026-10-29 at 18 02 26" src="https://github.com/user-attachments/assets/ef53b019-5859-43a8-9f9f-17603297f02c" />
+
+*(In the Entra admin center: checked the users, SG-IT members, and the dynamic group.)*
+
+Run the plan again, to confirm the real world matches the code: no changes.
+```bash
+   terraform plan
+```
+
+<img width="1117" height="358" alt="Screenshot 2026-10-29 at 18 03 55" src="https://github.com/user-attachments/assets/89270981-ddee-4e0a-b33f-ff73f388777d" />
+
+List everything Terraform is tracking in its state.
+```bash
+   terraform state list
+```
+
+<img width="822" height="795" alt="Screenshot 2026-10-29 at 18 05 28" src="https://github.com/user-attachments/assets/cf145fa8-0ee7-4eac-9754-eb1d4cec35d2" />
+
+Show everything Terraform knows about one user.
+```bash
+   terraform state show 'azuread_user.user["sam.chen"]'
+```
+
+<img width="961" height="752" alt="Screenshot 2026-10-29 at 18 06 36" src="https://github.com/user-attachments/assets/5486c562-947a-47d0-a1bd-c12c4055044b" />
+
+Print the outputs again, without re-applying.
+```bash
+    terraform output
+```
+<img width="529" height="211" alt="Screenshot 2026-10-29 at 18 07 33" src="https://github.com/user-attachments/assets/16de443e-9670-4ca9-af0f-554fd2df73c7" />
+
+
+Go back to the top of the repository.
+```bash
+    cd ..
+```
+
+See what changed; confirm `terraform.tfstate` is not listed.
+```bash
+    git status
+```
+
+Stage the changes for the next save point.
+```bash
+    git add .
+```
+
+Create the save point with a message.
+```bash
+    git commit -m "Step 6: Outputs, apply, and state"
+```
+
+Upload the commit to GitHub.
+```bash
+    git push
+```
+
+<img width="770" height="419" alt="Screenshot 2026-10-29 at 18 09 16" src="https://github.com/user-attachments/assets/92ac7f9b-b905-44d6-8112-2debda90113b" />
