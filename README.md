@@ -579,7 +579,7 @@ Show the plan, then create everything after I typed `yes` (20 resources).
 
 <img width="1428" height="501" alt="Screenshot 2026-10-29 at 21 10 06" src="https://github.com/user-attachments/assets/e0b5d96d-b4d9-4d70-82c2-c15a87c2a5f5" />
 
-<img width="1157" height="606" alt="Screenshot 2026-10-29 at 21 11 21" src="https://github.com/user-attachments/assets/1845eecf-cc75-4e45-8125-a5c87c16c1d1" />
+<img width="1428" height="436" alt="Screenshot 2026-10-29 at 21 10 26" src="https://github.com/user-attachments/assets/13838f45-81a7-41e9-ad93-f624320c34f6" />
 
 Run the plan again, to confirm the real world matches the code: no changes.
 ```bash
@@ -636,4 +636,4 @@ Upload the commit to GitHub.
 
 <img width="770" height="419" alt="Screenshot 2026-10-29 at 18 09 16" src="https://github.com/user-attachments/assets/92ac7f9b-b905-44d6-8112-2debda90113b" />
 
-<img width="1428" height="436" alt="Screenshot 2026-10-29 at 21 10 26" src="https://github.com/user-attachments/assets/13838f45-81a7-41e9-ad93-f624320c34f6" />
+<img width="1157" height="606" alt="Screenshot 2026-10-29 at 21 11 21" src="https://github.com/user-attachments/assets/1845eecf-cc75-4e45-8125-a5c87c16c1d1" />
