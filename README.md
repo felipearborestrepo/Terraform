@@ -361,6 +361,7 @@ The code has **no names in it**. It says "for each person in the YAML file, make
     git push
 ```
 
+<img width="873" height="799" alt="Screenshot 2026-10-29 at 21 18 57" src="https://github.com/user-attachments/assets/4b3e8461-b507-4bfb-9495-63571d330285" />
 
 
 ### Step 5: Entra groups and the dynamic group
