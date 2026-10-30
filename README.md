@@ -242,6 +242,8 @@ Upload the commit to GitHub.
 ```
 <img width="1572" height="702" alt="EC95E62C-0F15-4E27-A1A6-345532A7C499" src="https://github.com/user-attachments/assets/87e763c7-74af-4109-a6ed-6701feda842a" />
 
+<img width="855" height="933" alt="Screenshot 2026-10-29 at 21 14 47" src="https://github.com/user-attachments/assets/5d6484c8-937f-4027-9007-f5161370e034" />
+
 ### Step 4: Entra users
 
 **Goal:** Turn each person in `users.yaml` into an Entra ID user account, without listing anyone in the code.
@@ -473,6 +475,7 @@ In identity, **access is given to groups, not to individual people**. An app is 
 
 <img width="620" height="336" alt="Screenshot 2026-10-29 at 17 06 01" src="https://github.com/user-attachments/assets/21435b11-dee2-4dd0-90f2-973cc61b41f3" />
 
+<img width="897" height="533" alt="Screenshot 2026-10-29 at 21 12 19" src="https://github.com/user-attachments/assets/693d3a5a-22f7-43d3-9e61-3524c1ff903b" />
 
 ### Step 6: Outputs, apply, and state
 
@@ -565,6 +568,19 @@ Show the plan, then create everything after I typed `yes` (20 resources).
 
 *(In the Entra admin center: checked the users, SG-IT members, and the dynamic group.)*
 
+
+<img width="1417" height="636" alt="Screenshot 2026-10-29 at 21 07 06" src="https://github.com/user-attachments/assets/0e5e5f19-e908-48f3-b91d-d7bc0b84ec97" />
+
+<img width="1429" height="573" alt="Screenshot 2026-10-29 at 21 08 31" src="https://github.com/user-attachments/assets/f7be2351-9347-4f3b-a7cd-57c3646125f7" />
+
+# Security Group empty for now
+
+<img width="1426" height="654" alt="Screenshot 2026-10-29 at 21 09 22" src="https://github.com/user-attachments/assets/b0aefd66-2050-4c49-a881-07e6947f8ed7" />
+
+<img width="1428" height="501" alt="Screenshot 2026-10-29 at 21 10 06" src="https://github.com/user-attachments/assets/e0b5d96d-b4d9-4d70-82c2-c15a87c2a5f5" />
+
+<img width="1157" height="606" alt="Screenshot 2026-10-29 at 21 11 21" src="https://github.com/user-attachments/assets/1845eecf-cc75-4e45-8125-a5c87c16c1d1" />
+
 Run the plan again, to confirm the real world matches the code: no changes.
 ```bash
    terraform plan
@@ -619,3 +635,5 @@ Upload the commit to GitHub.
 ```
 
 <img width="770" height="419" alt="Screenshot 2026-10-29 at 18 09 16" src="https://github.com/user-attachments/assets/92ac7f9b-b905-44d6-8112-2debda90113b" />
+
+<img width="1428" height="436" alt="Screenshot 2026-10-29 at 21 10 26" src="https://github.com/user-attachments/assets/13838f45-81a7-41e9-ad93-f624320c34f6" />
