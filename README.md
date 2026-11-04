@@ -638,3 +638,113 @@ Upload the commit to GitHub.
 <img width="770" height="419" alt="Screenshot 2026-10-29 at 18 09 16" src="https://github.com/user-attachments/assets/92ac7f9b-b905-44d6-8112-2debda90113b" />
 
 <img width="1157" height="606" alt="Screenshot 2026-10-29 at 21 11 21" src="https://github.com/user-attachments/assets/1845eecf-cc75-4e45-8125-a5c87c16c1d1" />
+
+### Step 7: An identity for the automation
+
+**Goal:** Give the automation its own Entra identity with only the permissions it needs, and no stored secret.
+
+**What I did:**
+1. Registered an application, `sp-terraform-novalab-entra`, which created a service principal in my tenant.
+2. Removed the default permission and granted only three Microsoft Graph application permissions, with admin consent.
+3. Added two federated credentials so HCP Terraform can sign in without a client secret.
+4. Verified everything with the Azure CLI.
+
+<img width="1277" height="705" alt="Screenshot 2026-11-03 at 17 55 00" src="https://github.com/user-attachments/assets/4424dd8c-3985-44f6-8f0d-cc7d98beb3de" />
+
+<img width="1002" height="670" alt="Screenshot 2026-11-03 at 18 00 18" src="https://github.com/user-attachments/assets/983bbfd6-d965-49f2-b774-85e72c558ca6" />
+
+
+**Why it matters:**
+Until now, Terraform signed in to Entra **as me**, a Global Administrator. That means:
+- Any change looked like I made it by hand, so there was no clear audit trail.
+- The automation had far more power than it needed.
+- It only worked on my laptop.
+
+A **dedicated identity** for automation fixes all three: changes are clearly made by the automation, its access is limited to what it needs, and it works from HCP Terraform.
+
+**App registration vs service principal:**
+- **App registration:** the **definition** of an application (its name, permissions, credentials).
+- **Service principal:** the **actual identity** of that application inside my tenant, the thing that signs in and gets permissions.
+- Registering an app in the portal creates both. Think of the app registration as the job description, and the service principal as the employee who does the job.
+
+**Least-privilege permissions:**
+
+| Permission | Why it's needed |
+|---|---|
+| `Domain.Read.All` | Read the tenant's domain (the `azuread_domains` data source) |
+| `User.ReadWrite.All` | Create, update and disable users |
+| `Group.ReadWrite.All` | Create groups, the dynamic group, and memberships |
+
+Nothing else: no Global Administrator, no directory roles, no access to mail, files or apps.
+
+- **Application permissions** = the robot acts **as itself**, with no user signed in (the right type for automation).
+- **Delegated permissions** = an app acts **on behalf of a signed-in user** (removed here, since no person signs in).
+- **Admin consent** = an administrator approves the permissions for the whole tenant; application permissions don't work until this is done.
+
+<img width="1002" height="672" alt="Screenshot 2026-11-03 at 17 55 53" src="https://github.com/user-attachments/assets/514839e5-088d-4287-8c51-6bbd9ebdc8c8" />
+
+**How HCP Terraform signs in without a secret (workload identity federation / OIDC):**
+1. When a run starts, HCP Terraform creates a short-lived, **signed token** that says who it is: organization, project, workspace and run phase.
+2. It sends that token to Entra.
+3. Entra checks the **federated credential**: is the issuer `https://app.terraform.io`, and does the subject match **exactly**?
+4. If yes, Entra returns a short-lived **access token** for the service principal.
+5. Terraform uses it for that run only; it expires shortly after.
+
+No password or client secret exists, so there's nothing to leak, store or rotate. A token from any other organization or workspace is rejected, because its subject won't match.
+
+**Why two federated credentials:**
+The subject includes the **run phase**: `plan` or `apply`. Entra matches subjects exactly, so each phase needs its own credential. This also makes it possible to give plan and apply different identities later (for example, read-only for plans).
+
+<img width="1280" height="710" alt="Screenshot 2026-11-03 at 18 43 14" src="https://github.com/user-attachments/assets/78655ef9-7b2a-4a90-b716-256a44136d0c" />
+
+<img width="1001" height="670" alt="Screenshot 2026-11-03 at 18 46 39" src="https://github.com/user-attachments/assets/e9e7f8e5-0163-470e-9156-befb80b76b54" />
+
+**Key terms:**
+- **Service principal (SPN):** the identity an application or automation uses in Entra.
+- **Application permission:** access the app has as itself, without a user.
+- **Admin consent:** tenant-wide approval of an app's permissions.
+- **Federated credential:** a trust rule letting an external system (here, HCP Terraform) sign in as the service principal.
+- **OIDC token:** a signed statement of identity, issued per run and short-lived.
+- **Least privilege:** only the access required for the job.
+
+**Commands used (in order):**
+
+1. *(Entra admin center: registered the app, set API permissions with admin consent, and added two federated credentials.)*
+
+2. Confirm the app registration exists and get its client ID.
+   ```bash
+   az ad app list --display-name sp-terraform-novalab-entra --query "[].{name:displayName, appId:appId}" -o table
+   ```
+
+3. List the federated credentials, to check each subject matches the HCP workspace exactly.
+   ```bash
+   az ad app federated-credential list --id <APP-ID> --query "[].{name:name, subject:subject}" -o table
+   ```
+
+4. Confirm the service principal (the identity that signs in) exists in the tenant.
+   ```bash
+   az ad sp show --id <APP-ID> --query "{name:displayName, type:servicePrincipalType}" -o table
+
+   <img width="1308" height="209" alt="Screenshot 2026-11-03 at 20 57 08" src="https://github.com/user-attachments/assets/101ec276-9693-4dd8-ad13-cbd6c961782e" />
+
+5. See what changed: the README and new screenshots.
+   ```bash
+   git status
+   ```
+
+6. Stage the changes for the next save point.
+   ```bash
+   git add .
+   ```
+
+7. Create the save point with a message.
+   ```bash
+   git commit -m "Step 7: Entra service principal for automation"
+   ```
+
+8. Upload the commit to GitHub.
+   ```bash
+   git push
+   ```
+
+<img width="886" height="182" alt="Screenshot 2026-11-03 at 21 00 00" src="https://github.com/user-attachments/assets/5dc148d6-d2f3-4495-8604-ebb0987661bc" />
