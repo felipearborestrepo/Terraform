@@ -748,3 +748,152 @@ The subject includes the **run phase**: `plan` or `apply`. Entra matches subject
    ```
 
 <img width="886" height="182" alt="Screenshot 2026-11-03 at 21 00 00" src="https://github.com/user-attachments/assets/5dc148d6-d2f3-4495-8604-ebb0987661bc" />
+
+### Step 8: Entra in HCP Terraform
+
+**Goal:** Move Entra's state to HCP Terraform and make every run use the service principal from Step 7, with no stored secret.
+
+**What I did:**
+1. Created the HCP Terraform workspace `novalab-entra`.
+2. Set three environment variables telling HCP Terraform which tenant and which identity to use.
+3. Added `.terraformignore` so state files and screenshots are never uploaded.
+4. Added a `cloud` block to `entra/versions.tf` and migrated the state with `terraform init`.
+5. Ran a plan in HCP Terraform: no changes, as the service principal.
+6. Confirmed the service principal's sign-in in Entra's sign-in logs.
+7. Deleted the local state files.
+
+<img width="1486" height="926" alt="Screenshot 2026-11-04 at 21 06 48" src="https://github.com/user-attachments/assets/81f03462-0e23-4405-9f84-8d4090fb7917" />
+
+<img width="1124" height="924" alt="Screenshot 2026-11-04 at 21 07 55" src="https://github.com/user-attachments/assets/768b1c5a-5b8d-4e77-9dcf-a1ea2c2ffa65" />
+
+**Why it matters:**
+
+| | Before (Steps 4–6) | After (Step 8) |
+|---|---|---|
+| Who runs Terraform | Me, through `az login` | `sp-terraform-novalab-entra` |
+| Its permissions | Global Administrator | 3 Graph permissions |
+| Where state lives | A file on my laptop | HCP Terraform (access-controlled, versioned) |
+| Secret stored anywhere | My login session | None |
+| Audit trail | Changes look like I made them | Sign-in logs show the service principal |
+| Run history | None | Every run recorded in HCP Terraform |
+
+**Execution path:**
+
+```
+terraform plan (my Mac)
+   └─ uploads code to HCP Terraform (workspace novalab-entra)
+        └─ HCP Terraform creates a signed OIDC token for this run
+             └─ Entra checks it against the federated credential (issuer + subject)
+                  └─ Entra returns a short-lived access token for the service principal
+                       └─ Terraform calls Microsoft Graph with that token
+```
+
+**The workspace variables:**
+
+| Variable | Meaning |
+|---|---|
+| `TFC_AZURE_PROVIDER_AUTH = true` | Turn on dynamic credentials: create an OIDC token for each run |
+| `TFC_AZURE_RUN_CLIENT_ID` | Which identity to sign in as (the service principal's client ID) |
+| `ARM_TENANT_ID` | Which Entra tenant to sign in to |
+
+<img width="1456" height="903" alt="Screenshot 2026-11-04 at 21 12 34" src="https://github.com/user-attachments/assets/34e7035c-6470-45bd-8c64-8e59e7c897b2" />
+
+None of them is a secret: they are identifiers. The provider block stays empty (`provider "azuread" {}`) because the provider reads the identity from the environment at run time.
+
+**State migration:**
+`terraform init` noticed the new `cloud` block and existing local state, and offered to upload it. Without migrating, HCP Terraform would have started with empty memory and tried to create all 20 resources again.
+
+**`.terraformignore`:**
+With the working directory set to `entra`, Terraform uploads the whole repository. `.gitignore` decides what goes to GitHub; `.terraformignore` decides what goes to HCP Terraform. It blocks state files (passwords), provider downloads and screenshots.
+
+**Key terms:**
+- **Workspace:** HCP Terraform's container for one configuration: its state, variables and run history.
+- **Dynamic credentials:** short-lived credentials created per run, instead of stored secrets.
+- **Remote execution:** plans and applies run on HCP Terraform's machines; my terminal only shows the output.
+- **State migration:** moving existing state from one location (local) to another (HCP Terraform).
+- **Sign-in logs:** Entra's record of every sign-in, including service principals.
+
+
+**Commands used (in order):**
+
+1. *(HCP Terraform: created the `novalab-entra` workspace, set the Terraform version and working directory, and added three environment variables.)*
+
+2. *(VS Code: created `.terraformignore` and added the `cloud` block to `entra/versions.tf`, then saved.)*
+
+3. Go into the Entra folder.
+   ```bash
+   cd entra
+   ```
+
+4. Check formatting before going further; prints nothing if the code is neat.
+   ```bash
+   terraform fmt -check
+   ```
+
+5. Check that the HCP Terraform login from the first build is still saved on this Mac.
+   ```bash
+   ls ~/.terraform.d/credentials.tfrc.json
+   ```
+
+6. Connect the folder to HCP Terraform and migrate the local state (answered `yes`).
+   ```bash
+   terraform init
+   ```
+
+7. Run a plan in HCP Terraform as the service principal; expected: no changes.
+   ```bash
+   terraform plan
+   ```
+
+8. *(Entra admin center: checked the service principal sign-in logs.)*
+
+9. Delete the stale local state files, which contain passwords.
+   ```bash
+   rm terraform.tfstate terraform.tfstate.backup
+   ```
+
+<img width="713" height="545" alt="Screenshot 2026-11-05 at 23 23 37" src="https://github.com/user-attachments/assets/011e1aaa-a24e-470e-81cb-04d4782b8957" />
+
+10. Run the plan again, to confirm Terraform now reads the state from HCP Terraform.
+    ```bash
+    terraform plan
+    ```
+
+11. Go back to the top of the repository.
+    ```bash
+    cd ..
+    ```
+
+12. See what changed; confirm no `.tfstate` file is listed.
+    ```bash
+    git status
+    ```
+
+13. Stage the changes for the next save point.
+    ```bash
+    git add .
+    ```
+
+14. Create the save point with a message.
+    ```bash
+    git commit -m "Step 8: Entra in HCP Terraform with dynamic credentials"
+    ```
+
+15. Upload the commit to GitHub.
+    ```bash
+    git push
+    ```
+
+<img width="822" height="531" alt="Screenshot 2026-11-05 at 23 35 05" src="https://github.com/user-attachments/assets/14092e7e-7f9e-4354-a4e8-b3a10e61e1e9" />
+
+
+# Results in HCP Terraform
+
+## Runs tab to see who performed the changes
+
+<img width="1405" height="663" alt="Screenshot 2026-11-06 at 00 00 05" src="https://github.com/user-attachments/assets/2310a581-34d5-482c-8a1f-52c6f814576e" />
+
+## Overviews tab to see all the resources
+
+<img width="1329" height="881" alt="Screenshot 2026-11-05 at 23 59 46" src="https://github.com/user-attachments/assets/25d8d3fe-7acc-428f-858f-98b37cb59bf7" />
+
