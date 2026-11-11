@@ -897,3 +897,132 @@ With the working directory set to `entra`, Terraform uploads the whole repositor
 
 <img width="1329" height="881" alt="Screenshot 2026-11-05 at 23 59 46" src="https://github.com/user-attachments/assets/25d8d3fe-7acc-428f-858f-98b37cb59bf7" />
 
+### Step 9: An identity for the automation in Okta
+
+**Goal:** Give the automation its own Okta identity with limited permissions, instead of an API token tied to my admin account.
+
+**What I did:**
+1. Created an API Services app, `sp-terraform-novalab-okta`.
+2. Switched its client authentication to a public/private key pair and stored the private key outside the repository.
+3. Turned off DPoP, which the Terraform provider doesn't use.
+4. Granted only the 5 OAuth scopes the configuration needs.
+5. Assigned the Organization Administrator role instead of Super Administrator.
+6. Added `*.pem` to `.gitignore`.
+
+<img width="1277" height="848" alt="Screenshot 2026-11-10 at 20 55 20" src="https://github.com/user-attachments/assets/a2741110-dc5d-4d82-ba4f-bf69c9d22a8f" />
+
+<img width="1189" height="627" alt="Screenshot 2026-11-10 at 20 57 10" src="https://github.com/user-attachments/assets/fbba2b8e-7241-4b11-94e1-a38ff4cc14bc" />
+
+<img width="996" height="807" alt="Screenshot 2026-11-10 at 21 12 44" src="https://github.com/user-attachments/assets/5c7d4ae5-9f9d-488c-8529-d20ff2cec7a4" />
+
+**Why it matters:**
+
+| | API token (first build) | Service app (now) |
+|---|---|---|
+| Acts as | Me, a Super Administrator | Its own identity |
+| Permissions | Everything my account can do | 5 scopes + an admin role |
+| Credential | A long-lived token string | A private key; access tokens last 1 hour |
+| Audit trail | Changes look like I made them | Okta's System Log shows the app as the actor |
+| If I leave the company | The token stops working when my account is deactivated | Unaffected |
+
+**How the app signs in (OAuth 2.0 client credentials with private_key_jwt):**
+1. Terraform creates a short message ("I'm this client, asking for these scopes") and **signs it with the private key**.
+2. Okta checks the signature with the **public key** it stores.
+3. If it matches, Okta returns an **access token** limited to the requested scopes, valid for 1 hour.
+4. Terraform uses that token for the API calls.
+
+The private key never leaves my side; Okta only ever sees the public key and the signature.
+
+<img width="903" height="756" alt="Screenshot 2026-11-10 at 20 58 41" src="https://github.com/user-attachments/assets/ec1d1715-1283-4a57-b2ce-cae8fe29db3c" />
+
+<img width="1097" height="862" alt="Screenshot 2026-11-10 at 21 00 10" src="https://github.com/user-attachments/assets/f53a3118-7391-4451-8ecf-5bf767bf1363" />
+
+**Two layers of permission:**
+- **Scopes** decide which Okta APIs the app may call.
+- **The admin role** decides what it's allowed to do as an administrator.
+- An action needs **both**.
+
+| Scope | Why it's needed |
+|---|---|
+| `okta.users.manage` | Create and update NovaLab users |
+| `okta.groups.manage` | Create department groups and group rules |
+| `okta.apps.manage` | Create the IT portal app and assign it to a group |
+| `okta.policies.manage` | Create the app sign-on policy and its rules |
+| `okta.networkZones.manage` | Create the blocked-networks zone |
+
+<img width="1060" height="706" alt="Screenshot 2026-11-10 at 21 14 50" src="https://github.com/user-attachments/assets/677d3b52-df9b-4fd0-ad04-a55b19784f95" />
+
+<img width="1090" height="728" alt="Screenshot 2026-11-10 at 21 17 58" src="https://github.com/user-attachments/assets/ce47ba79-e5d0-40d0-9d8c-a0f47fe05dba" />
+
+**Entra vs Okta authentication:**
+
+| | Entra (Step 7) | Okta (Step 9) |
+|---|---|---|
+| Method | Workload identity federation (OIDC) | OAuth 2.0 client credentials with a private key |
+| Stored secret | None | The private key |
+| Where the secret lives | n/a | My Mac, outside the repo; next, HCP Terraform as a sensitive variable |
+
+The Okta Terraform provider doesn't support federation with HCP Terraform, so a private key is the strongest option: it's never sent over the network, and access tokens expire after an hour.
+
+**Key terms:**
+- **API Services app:** an Okta app for machine-to-machine access, with no user sign-in.
+- **Client credentials flow:** OAuth flow where an app signs in as itself.
+- **private_key_jwt:** proving identity by signing a token with a private key.
+- **Scope:** a permission for one area of the Okta API.
+- **Admin role:** the administrator permissions assigned to the app.
+- **DPoP:** an extra token-binding protection; disabled because the provider doesn't use it.
+- **PEM:** a text format for keys, starting with `-----BEGIN PRIVATE KEY-----`.
+
+**Commands used (in order):**
+
+1. *(Okta Admin Console: created the API Services app, generated a key pair, and copied the private key in PEM format.)*
+
+2. Create a hidden folder in my home directory for keys, outside the repository.
+   ```bash
+   mkdir -p ~/.okta
+   ```
+
+3. Save the copied private key from the clipboard into a file.
+   ```bash
+   pbpaste > ~/.okta/novalab-okta-key.pem
+   ```
+
+4. Make the key file readable only by my user account.
+   ```bash
+   chmod 600 ~/.okta/novalab-okta-key.pem
+   ```
+
+5. Check the first line, to confirm it's a PEM private key.
+   ```bash
+   head -1 ~/.okta/novalab-okta-key.pem
+   ```
+
+<img width="671" height="70" alt="Screenshot 2026-11-10 at 23 21 47" src="https://github.com/user-attachments/assets/05a01868-fc16-46f5-a91c-558ffdbb7424" />
+
+6. *(Okta Admin Console: turned off DPoP, granted 5 scopes, and assigned the Organization Administrator role. VS Code: added `*.pem` to `.gitignore`.)*
+
+7. Go to the top of the repository.
+   ```bash
+   cd ~/Desktop/identity-platform-iac
+   ```
+
+8. See what changed; confirm no `.pem` file is listed.
+   ```bash
+   git status
+   ```
+
+9. Stage the changes for the next save point.
+   ```bash
+   git add .
+   ```
+
+10. Create the save point with a message.
+    ```bash
+    git commit -m "Step 9: Okta service app for automation"
+    ```
+
+11. Upload the commit to GitHub.
+    ```bash
+    git push
+    ```
+<img width="816" height="370" alt="Screenshot 2026-11-10 at 23 23 37" src="https://github.com/user-attachments/assets/8f6ed4fb-7eb1-41e2-9b49-1894dc84d1bf" />
