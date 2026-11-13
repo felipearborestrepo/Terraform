@@ -1026,3 +1026,225 @@ The Okta Terraform provider doesn't support federation with HCP Terraform, so a 
     git push
     ```
 <img width="816" height="370" alt="Screenshot 2026-11-10 at 23 23 37" src="https://github.com/user-attachments/assets/8f6ed4fb-7eb1-41e2-9b49-1894dc84d1bf" />
+
+### System Log Results
+
+<img width="1163" height="622" alt="Screenshot 2026-11-12 at 20 53 18" src="https://github.com/user-attachments/assets/deafac8f-7024-41b4-9f0d-7c3007563412" />
+
+### Step 10: Okta in HCP Terraform, running as the service app
+
+**Goal:** Run the Okta configuration in HCP Terraform, signed in as the service app, and make the first change with it: the 4 department groups.
+
+**What I did:**
+1. Created the `okta` folder with `versions.tf`, `variables.tf` and `main.tf`.
+2. Created the HCP Terraform workspace `novalab-okta` (Terraform 1.16.5, working directory `okta`).
+3. Added the sign-in settings: 5 environment variables and 1 sensitive Terraform variable for the private key.
+4. Rotated the service app's key after it was exposed during setup.
+5. Planned and applied the groups `NL-Finance`, `NL-HR`, `NL-IT` and `NL-Security`.
+6. Confirmed in Okta's System Log that the service app made the change.
+
+<img width="1282" height="802" alt="Screenshot 2026-11-13 at 02 04 14" src="https://github.com/user-attachments/assets/ee0e5db5-f5c5-4918-9797-0361cefeebdf" />
+
+<img width="927" height="804" alt="Screenshot 2026-11-13 at 02 04 42" src="https://github.com/user-attachments/assets/1e151b86-26ea-48be-b8b0-06a9feab9c65" />
+
+<img width="1160" height="789" alt="Screenshot 2026-11-13 at 02 05 24" src="https://github.com/user-attachments/assets/b03d60ae-0700-4fd6-a836-650efa996cc4" />
+
+<img width="1163" height="622" alt="Screenshot 2026-11-12 at 20 53 18" src="https://github.com/user-attachments/assets/366061cf-4cab-4673-b175-76129988f376" />
+
+**The code:**
+
+`okta/versions.tf`: the Okta provider and the `cloud` block pointing to the `novalab-okta` workspace.
+```hcl
+provider "okta" {
+  private_key = var.okta_private_key
+}
+```
+
+<img width="811" height="546" alt="Screenshot 2026-11-13 at 01 21 19" src="https://github.com/user-attachments/assets/ebb36cf6-e381-44d4-ad0e-348df4fb4fb1" />
+
+`okta/variables.tf`: declares the private key, marked sensitive so Terraform hides it in all output.
+```hcl
+variable "okta_private_key" {
+  description = "Private key for the sp-terraform-novalab-okta service app"
+  type        = string
+  sensitive   = true
+}
+```
+
+<img width="1024" height="406" alt="Screenshot 2026-11-13 at 01 26 30" src="https://github.com/user-attachments/assets/8140eb32-d26f-48f2-8974-8124e53ab8dd" />
+
+`okta/main.tf`: reads the **same** `users.yaml` as Entra and creates one group per department.
+```hcl
+locals {
+  config = yamldecode(file("${path.module}/../entra/users.yaml"))
+}
+
+<img width="641" height="148" alt="Screenshot 2026-11-13 at 01 28 30" src="https://github.com/user-attachments/assets/dc58ec80-29a5-4542-99d7-52c1f85291a8" />
+
+resource "okta_group" "department" {
+  for_each = toset(local.config.departments)
+
+  name        = "NL-${each.key}"
+  description = "NovaLab ${each.key} department (managed by Terraform)"
+}
+```
+
+<img width="641" height="148" alt="Screenshot 2026-11-13 at 01 28 30" src="https://github.com/user-attachments/assets/6c0c4595-26b4-48cf-99f9-53e76819b363" />
+
+**The workspace variables:**
+
+| Variable | Category | Meaning |
+|---|---|---|
+| `OKTA_ORG_NAME`, `OKTA_BASE_URL` | env | Which Okta org |
+| `OKTA_API_CLIENT_ID` | env | Which identity: the service app |
+| `OKTA_API_SCOPES` | env | Which scopes to request (comma-separated, no spaces) |
+| `OKTA_API_PRIVATE_KEY_ID` | env | Which key pair to use (the KID) |
+| `okta_private_key` | terraform, **sensitive** | The private key that signs the sign-in request |
+
+<img width="1278" height="753" alt="Screenshot 2026-11-13 at 01 31 23" src="https://github.com/user-attachments/assets/e4597600-2748-4015-b07d-7b6eb90e78a5" />
+
+**Environment variables vs Terraform variables:**
+- **Environment variables** are read by the provider directly, like `export` in a terminal. HCP Terraform requires them to be **one line**.
+- **Terraform variables** fill a `variable` block in the code and **can span multiple lines**.
+- A PEM private key is multi-line, so it's stored as a sensitive Terraform variable and passed to the provider with `private_key = var.okta_private_key`.
+
+**Execution path:**
+
+```
+terraform plan / apply (my Mac)
+   └─ uploads the repository to HCP Terraform (workspace novalab-okta, working directory okta)
+        └─ the Okta provider signs a request with the private key
+             └─ Okta checks the signature with the stored public key
+                  └─ Okta returns a 1-hour access token, limited to the 5 scopes
+                       └─ Terraform calls the Okta API; the admin role decides what's allowed
+```
+
+<img width="952" height="984" alt="Screenshot 2026-11-13 at 01 49 42" src="https://github.com/user-attachments/assets/98c3d5e6-19d4-41d8-8a8c-7e48809267c3" />
+
+<img width="820" height="493" alt="Screenshot 2026-11-13 at 01 50 29" src="https://github.com/user-attachments/assets/ce1d268e-2820-4790-9202-52430dcd64dc" />
+
+<img width="1274" height="748" alt="Screenshot 2026-11-13 at 01 51 24" src="https://github.com/user-attachments/assets/e241a118-731b-48e8-9505-2e234ff3a7da" />
+
+<img width="1272" height="703" alt="Screenshot 2026-11-13 at 01 52 47" src="https://github.com/user-attachments/assets/babf880c-1854-44a7-9f90-2ebd83715dc7" />
+
+<img width="1169" height="861" alt="Screenshot 2026-11-13 at 01 53 37" src="https://github.com/user-attachments/assets/a535e506-2bbf-43f7-ba2f-6a6caebcbe73" />
+
+**Why start with only groups:**
+Testing a new sign-in method on the smallest change makes problems easy to isolate. If authentication fails, it fails on 4 groups, not on 20 resources.
+
+**Troubleshooting:**
+
+| Problem | Cause | Fix |
+|---|---|---|
+| `no file exists at "./../entra/users.yaml"` | The workspace had no working directory, so HCP Terraform uploaded only the `okta` folder | Set the Terraform Working Directory to `okta`, so the whole repository is uploaded |
+| **Private key exposed** | I pasted the key into a notes app and a screenshot | Treated it as compromised and rotated it (below) |
+| Couldn't deactivate the exposed key | Okta won't leave a key-based app with no active key | Added the new key first, then deactivated and deleted the old one |
+| `Value cannot contain newlines in environment variables` | PEM keys are multi-line; environment variables must be one line | Stored the key as a sensitive **Terraform** variable instead |
+| `Value for undeclared variable` and `your Okta API token is missing` | HCP Terraform had the key, but the code had no `variable` block and the provider block was empty, so the provider fell back to looking for an API token | Declared `variable "okta_private_key"` and set `private_key = var.okta_private_key` |
+| `OKTA_API_PRIVATE_KEY_ID` ignored | It was saved as a Terraform variable; the provider reads it from the environment | Re-created it as an environment variable |
+
+**Key rotation:**
+1. Generated a new key pair on the app and saved the new private key straight to `~/.okta/novalab-okta-key.pem`.
+2. Set the old key to **Inactive**, saved, then **deleted** it. From that moment, the exposed key was useless.
+3. Updated `OKTA_API_PRIVATE_KEY_ID` and `okta_private_key` in HCP Terraform with the new values.
+4. Deleted every other copy (notes, screenshots).
+
+Lesson: a private key goes from Okta, to a local file, to HCP Terraform, and nowhere else.
+
+**Key terms:**
+- **Sensitive variable:** a value HCP Terraform stores but never displays again, and hides in run logs.
+- **Key rotation:** replacing a credential with a new one and retiring the old one.
+- **System Log:** Okta's audit log of every admin and API action, including who did it.
+- **Actor:** the identity that performed an action in the System Log.
+
+**Commands used (in order):**
+
+1. *(VS Code: created `okta/versions.tf`, `okta/variables.tf` and `okta/main.tf`. HCP Terraform: created the `novalab-okta` workspace, set the version and working directory, and added the environment variables.)*
+
+2. *(Okta Admin Console: added a new key to the app and copied the private key in PEM format.)* Save the new key over the old file.
+   ```bash
+   pbpaste > ~/.okta/novalab-okta-key.pem
+   ```
+
+3. Make the key file readable only by my user account.
+   ```bash
+   chmod 600 ~/.okta/novalab-okta-key.pem
+   ```
+
+4. Confirm it's a PEM private key.
+   ```bash
+   head -1 ~/.okta/novalab-okta-key.pem
+   ```
+
+5. *(Okta Admin Console: deactivated and deleted the old key.)* Copy the new key into the clipboard, to paste it into HCP Terraform as the sensitive Terraform variable `okta_private_key`.
+   ```bash
+   pbcopy < ~/.okta/novalab-okta-key.pem
+   ```
+<img width="601" height="58" alt="Screenshot 2026-11-13 at 02 00 22" src="https://github.com/user-attachments/assets/5a2ba7e2-600e-45fa-abd9-2919f58c9696" />
+
+6. Clear the clipboard so the key doesn't stay in it.
+   ```bash
+   echo "" | pbcopy
+   ```
+
+7. Go into the Okta folder.
+   ```bash
+   cd okta
+   ```
+
+8. Fix spacing and alignment automatically.
+   ```bash
+   terraform fmt
+   ```
+
+9. Connect the folder to the `novalab-okta` workspace and download the Okta provider.
+   ```bash
+   terraform init
+   ```
+
+10. Check the code for errors.
+    ```bash
+    terraform validate
+    ```
+
+11. Run a plan in HCP Terraform as the service app; expected: 4 to add.
+    ```bash
+    terraform plan
+    ```
+
+12. Create the 4 groups after reviewing the plan and typing `yes`.
+    ```bash
+    terraform apply
+    ```
+
+13. *(Okta Admin Console: checked the groups and the System Log entry.)*
+
+14. Go back to the top of the repository.
+    ```bash
+    cd ..
+    ```
+
+15. See what changed; confirm no state or key files are listed.
+    ```bash
+    git status
+    ```
+
+16. Stage the changes for the next save point.
+    ```bash
+    git add .
+    ```
+
+17. Create the save point with a message.
+    ```bash
+    git commit -m "Step 10: Okta groups in HCP Terraform as the service app"
+    ```
+
+18. Upload the commit to GitHub.
+    ```bash
+    git push
+    ```
+
+    <img width="935" height="402" alt="Screenshot 2026-11-13 at 02 02 11" src="https://github.com/user-attachments/assets/3f14fc2b-df13-42c6-ad79-d5b9549a0e27" />
+
+<img width="1289" height="414" alt="Screenshot 2026-11-13 at 02 03 10" src="https://github.com/user-attachments/assets/98758c83-9512-4b53-95ef-848aae7d0aa0" />
+
