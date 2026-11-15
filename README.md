@@ -1248,3 +1248,131 @@ Lesson: a private key goes from Okta, to a local file, to HCP Terraform, and now
 
 <img width="1289" height="414" alt="Screenshot 2026-11-13 at 02 03 10" src="https://github.com/user-attachments/assets/98758c83-9512-4b53-95ef-848aae7d0aa0" />
 
+### Step 12: The IT portal app, sign-on policy and network zone
+
+**Goal:** Control what users can access and how: an app only IT can see, a policy requiring MFA, and a deny rule for blocked networks.
+
+**What I did:**
+1. Added a `blocked_ip_ranges` variable.
+2. Added a network zone, an app sign-on policy with two rules, a bookmark app, and a group assignment.
+3. Applied as the service app, and verified the results in the Okta Admin Console.
+
+<img width="1197" height="485" alt="Screenshot 2026-11-15 at 15 04 35" src="https://github.com/user-attachments/assets/8d0bb263-4405-4bb2-9b22-809b6acc3ee4" />
+
+**Why it matters:**
+Steps 4–11 decided **who** exists and **which groups** they're in. This step decides **what they can reach, and under which conditions**. Access rules written as code are reviewable, repeatable, and can't drift silently from what was approved.
+
+**How a sign-in to the IT portal is evaluated:**
+
+```
+User opens NovaLab IT Portal
+   └─ Rule 1 (priority 1): coming from NL-Blocked-Networks?  → yes: DENY, stop
+        └─ Rule 2 (priority 2): member of NL-IT?             → yes: ALLOW with MFA (2FA),
+                                                                re-check every 2 hours
+             └─ Catch-all rule (Okta default)                 → everyone else
+```
+
+Okta checks rules **in priority order** and stops at the **first match**. The deny rule is priority 1, so a blocked network is refused even for IT members.
+
+**The code:**
+
+| Resource | What it does |
+|---|---|
+| `okta_network_zone` | A named list of IP ranges (`203.0.113.0/24`, a range reserved for documentation) |
+| `okta_app_signon_policy` | The policy container for the app |
+| `okta_app_signon_policy_rule` "deny_blocked" | `access = "DENY"` for anyone in the zone |
+| `okta_app_signon_policy_rule` "it_mfa" | `access = "ALLOW"` for `NL-IT`, `factor_mode = "2FA"`, `re_authentication_frequency = "PT2H"` |
+| `okta_app_bookmark` | A dashboard tile linked to the policy with `authentication_policy` |
+| `okta_app_group_assignment` | Gives the app to `NL-IT` only |
+
+<img width="710" height="895" alt="Screenshot 2026-11-15 at 15 06 03" src="https://github.com/user-attachments/assets/3a201283-244b-4f3d-a973-efc82cb3c48d" />
+
+- `PT2H` is an ISO 8601 duration: **P**eriod, **T**ime, **2 H**ours.
+- `depends_on` makes Terraform create the deny rule before the MFA rule, so the priorities are set in the right order.
+- `gateways = var.blocked_ip_ranges` reads the IP list from a **variable** with a default value, so changing the blocked ranges never requires editing the resource.
+
+**Least privilege, tested:**
+The service app has the Organization Administrator role, not Super Administrator. Creating a network zone and a sign-on policy was the test of whether that role is enough.
+
+<img width="852" height="274" alt="Screenshot 2026-11-15 at 15 06 48" src="https://github.com/user-attachments/assets/9c8defd7-d469-48de-aaa1-2735cc7df69b" />
+
+<img width="1176" height="754" alt="Screenshot 2026-11-15 at 15 00 11" src="https://github.com/user-attachments/assets/cccd0620-9768-409e-89a4-de0940476e79" />
+
+<img width="780" height="299" alt="Screenshot 2026-11-15 at 15 07 50" src="https://github.com/user-attachments/assets/70421d2a-1729-406f-917f-250f90e10800" />
+
+**Key terms:**
+- **Network zone:** a named set of IP ranges used in policies.
+- **App sign-on policy (authentication policy):** rules deciding who may access an app and with which factors.
+- **Rule priority:** the order rules are checked; the first match wins.
+- **2FA:** two-factor authentication: something you know plus something you have.
+- **Bookmark app:** an Okta tile that links to a URL.
+
+**Commands used (in order):**
+
+1. *(VS Code: added `blocked_ip_ranges` to `okta/variables.tf`, and the zone, policy, rules, app and assignment to `okta/main.tf`.)*
+
+2. Go into the Okta folder.
+   ```bash
+   cd okta
+   ```
+
+3. Fix spacing and alignment automatically.
+   ```bash
+   terraform fmt
+   ```
+
+4. Check the code for errors.
+   ```bash
+   terraform validate
+   ```
+
+5. Preview the changes in HCP Terraform as the service app; expected: 6 to add.
+   ```bash
+   terraform plan
+   ```
+
+6. Create the resources after reviewing the plan and typing `yes`.
+   ```bash
+   terraform apply
+   ```
+
+7. *(Okta Admin Console: checked Networks, the policy rules, the app's Sign On and Assignments tabs, and the System Log.)*
+
+8. Confirm the real world matches the code.
+   ```bash
+   terraform plan
+   ```
+
+9. Go back to the top of the repository.
+   ```bash
+   cd ..
+   ```
+
+10. See what changed.
+    ```bash
+    git status
+    ```
+
+11. Stage the changes for the next save point.
+    ```bash
+    git add .
+    ```
+
+12. Create the save point with a message.
+    ```bash
+    git commit -m "Step 12: Okta app, sign-on policy and network zone"
+    ```
+
+13. Upload the commit to GitHub.
+    ```bash
+    git push
+    ```
+
+<img width="937" height="391" alt="Screenshot 2026-11-15 at 15 11 01" src="https://github.com/user-attachments/assets/27ed08ca-f0c8-4b73-83ba-b80a00a40050" />
+
+<img width="749" height="530" alt="Screenshot 2026-11-15 at 15 11 25" src="https://github.com/user-attachments/assets/9e0b63e6-05cb-42a0-9faa-f96e3117db69" />
+
+<img width="932" height="898" alt="Screenshot 2026-11-15 at 15 12 41" src="https://github.com/user-attachments/assets/1c8b6861-29a0-442e-9201-28c1e3ea051e" />
+
+
+
