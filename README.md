@@ -1375,4 +1375,133 @@ The service app has the Organization Administrator role, not Super Administrator
 <img width="932" height="898" alt="Screenshot 2026-11-15 at 15 12 41" src="https://github.com/user-attachments/assets/1c8b6861-29a0-442e-9201-28c1e3ea051e" />
 
 
+### Step 13: Branches, pull requests, and automatic checks
 
+**Goal:** Make every change go through a pull request that is checked automatically, and block changes to `main` that skip the process.
+
+**What I did:**
+1. Created a branch and added a GitHub Actions workflow that runs `terraform fmt` and `terraform validate` on both folders.
+2. Opened a pull request; both checks passed.
+3. Merged it and deleted the branch.
+4. Created a ruleset protecting `main`: pull requests required, checks must pass, no force pushes, no deletion.
+5. Tested the rule: a direct push to `main` was rejected.
+
+<img width="1181" height="889" alt="Screenshot 2026-11-17 at 20 56 11" src="https://github.com/user-attachments/assets/db1d0a00-1149-4a4a-b5f6-a4bb662581a6" />
+
+**Why it matters:**
+- **Review before change:** every identity change is proposed, checked and approved before it reaches `main`.
+- **Automatic quality gate:** formatting and syntax errors are caught by the pipeline, not by a person remembering to check.
+- **Enforced, not optional:** the ruleset makes the process mandatory, including for me.
+
+**The workflow (`.github/workflows/terraform-checks.yml`):**
+
+| Part | Meaning |
+|---|---|
+| `on: pull_request` / `push: branches: [main]` | Run on every pull request, and again when changes land on `main` |
+| `permissions: contents: read` | The pipeline's GitHub token can only read code: least privilege for the pipeline itself |
+| `matrix: folder: [entra, okta]` | Run the same job twice, in parallel, once per folder |
+| `fail-fast: false` | If one folder fails, the other still finishes, so all problems show at once |
+| `working-directory: ${{ matrix.folder }}` | Run each command inside that folder |
+| `terraform_version: 1.16.5` | The same version as my Mac and HCP Terraform |
+| `terraform fmt -check -diff` | Fail if code isn't formatted, and show the difference |
+| `terraform init -backend=false` | Download providers without connecting to HCP Terraform; the checks need no credentials |
+| `terraform validate` | Fail on syntax errors, unknown arguments or bad references |
+
+<img width="1036" height="895" alt="Screenshot 2026-11-16 at 21 17 14" src="https://github.com/user-attachments/assets/224a7637-d787-419c-b3f3-9bb663af74b4" />
+
+**The pipeline needs no secrets.** It never connects to HCP Terraform, Entra or Okta; it only checks the code. Credentials stay in HCP Terraform.
+
+**The `main` ruleset:**
+
+| Rule | Effect |
+|---|---|
+| Require a pull request | No direct pushes to `main` |
+| Require status checks | Can't merge until `check (entra)` and `check (okta)` pass |
+| Block force pushes | History on `main` can't be rewritten |
+| Restrict deletions | `main` can't be deleted |
+
+<img width="864" height="895" alt="Screenshot 2026-11-17 at 20 57 29" src="https://github.com/user-attachments/assets/ed23c86f-6e5f-4c5d-a49c-3b468fa6ce69" />
+
+<img width="954" height="863" alt="Screenshot 2026-11-17 at 20 57 52" src="https://github.com/user-attachments/assets/9f2dffe6-f195-4a63-9e1d-cedc1fe3ed2c" />
+
+Required approvals are 0 because I work alone; on a team, at least one reviewer other than the author would approve (separation of duties).
+
+**The workflow from here on:**
+
+```
+git checkout -b <branch>  →  edit  →  commit  →  push  →  pull request
+   →  checks run automatically  →  merge  →  delete branch  →  git pull
+```
+
+**Key terms:**
+- **Branch:** a separate line of work; `main` holds the approved version.
+- **Pull request (PR):** a request to merge a branch into `main`, with discussion and checks.
+- **GitHub Actions:** GitHub's automation; a **workflow** runs **jobs** made of **steps**.
+- **Status check:** a pass/fail result shown on a pull request.
+- **Ruleset:** rules GitHub enforces on branches.
+- **CI (continuous integration):** automatically checking every change as it's proposed.
+
+**Commands used (in order):**
+
+1. Start from the latest `main`.
+   ```bash
+   git checkout main
+   git pull
+   ```
+
+2. Create a branch for this change and switch to it.
+   ```bash
+   git checkout -b add-ci
+   ```
+
+<img width="856" height="284" alt="Screenshot 2026-11-17 at 21 11 45" src="https://github.com/user-attachments/assets/e1bb2c2a-2390-4af2-9039-06811fa383b1" />
+
+3. *(VS Code: created `.github/workflows/terraform-checks.yml`.)* Check formatting in every folder before pushing.
+   ```bash
+   terraform fmt -check -recursive
+   ```
+
+<img width="634" height="143" alt="Screenshot 2026-11-17 at 21 10 58" src="https://github.com/user-attachments/assets/52638911-49db-4de2-a694-812f2a74705d" />
+
+4. Stage, commit, and upload the branch.
+   ```bash
+   git add .
+   git commit -m "Step 13: Add Terraform checks on pull requests"
+   git push -u origin add-ci
+   ```
+
+5. Open a pull request, using the commit message as its title.
+   ```bash
+   gh pr create --fill
+   ```
+<img width="910" height="968" alt="Screenshot 2026-11-17 at 21 07 35" src="https://github.com/user-attachments/assets/e55e3c1b-aa96-4a8a-bfe2-3c067d8b4f8c" />
+
+6. Wait for the checks and show the results.
+   ```bash
+   gh pr checks --watch
+   ```
+
+7. Merge the pull request and delete the branch.
+   ```bash
+   gh pr merge --merge --delete-branch
+   ```
+
+<img width="989" height="337" alt="Screenshot 2026-11-17 at 21 02 11" src="https://github.com/user-attachments/assets/07cda812-b906-49d1-9c7e-52e034347499" />
+
+8. Download the merged result into my local `main`.
+   ```bash
+   git pull
+   ```
+
+9. *(GitHub: created the `protect-main` ruleset.)* Test the rule with a direct push to `main`; GitHub rejected it.
+   ```bash
+   git commit --allow-empty -m "Test direct push"
+   git push
+   ```
+
+10. Remove the local test commit, to match GitHub again.
+    ```bash
+    git reset --hard origin/main
+    ```
+
+<img width="914" height="255" alt="Screenshot 2026-11-17 at 21 08 27" src="https://github.com/user-attachments/assets/de171d04-2dd2-492a-b113-08b3cfc80c72" />
