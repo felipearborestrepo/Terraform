@@ -1620,3 +1620,109 @@ Okta also watches `entra/users.yaml` because its code reads the employee list fr
    ```
    
    <img width="688" height="110" alt="Screenshot 2026-11-18 at 11 21 31" src="https://github.com/user-attachments/assets/7f90bb13-858c-4292-8ccb-d60c7114616b" />
+
+### Step 15: End-to-end demo: hiring a new employee
+
+**Goal:** Prove the whole execution path with a real identity change: one pull request creates a new employee in both Entra ID and Okta, under the service identities, with approval and audit at every stage.
+
+**The change:** 4 lines added to `entra/users.yaml`.
+
+```yaml
+  casey.nguyen:
+    display_name: Casey Nguyen
+    department: Security
+    job_title: Security Analyst
+```
+
+<img width="868" height="531" alt="Screenshot 2026-11-18 at 14 53 09" src="https://github.com/user-attachments/assets/bed7e197-4953-4156-9100-6bfa5075924e" />
+
+**What happened, stage by stage:**
+
+| # | Stage | Where | Result |
+|---|---|---|---|
+| 1 | Proposed | GitHub pull request | 4 lines added to `users.yaml` |
+| 2 | Checked | GitHub Actions | `fmt` and `validate` passed for both folders |
+| 3 | Planned | HCP Terraform (speculative plans) | Entra: 3 to add. Okta: 2 to add |
+| 4 | Reviewed and merged | GitHub, `protect-main` ruleset | Merge allowed only after checks passed |
+| 5 | Planned on `main` | HCP Terraform | Both runs stopped at **Needs Confirmation** |
+| 6 | Approved | HCP Terraform | I confirmed each apply with a comment |
+| 7 | Applied | Entra ID, Okta | Casey created in both, as the service identities |
+| 8 | Automatic access | Entra dynamic group, Okta group rule | Casey added to `NovaLab Synced Users` and `NL-Security` by rules, not by Terraform |
+| 9 | Audited | Entra audit log, Okta System Log | Both show the service identity as the actor |
+
+<img width="1054" height="610" alt="Screenshot 2026-11-18 at 11 56 39" src="https://github.com/user-attachments/assets/fd353135-87f6-405c-90d7-04fb94d79114" />
+
+<img width="1061" height="606" alt="Screenshot 2026-11-18 at 11 57 37" src="https://github.com/user-attachments/assets/1183b022-8bf5-4c9e-99fd-c8b11a2621d9" />
+
+<img width="1066" height="594" alt="Screenshot 2026-11-18 at 13 51 49" src="https://github.com/user-attachments/assets/492c3e6b-4bb2-482f-8f6a-8bcfc4606ce5" />
+
+<img width="1059" height="436" alt="Screenshot 2026-11-18 at 13 54 08" src="https://github.com/user-attachments/assets/603a7216-0ec8-43f0-923b-3a9d629ca949" />
+
+<img width="718" height="558" alt="Screenshot 2026-11-18 at 13 54 37" src="https://github.com/user-attachments/assets/0f77e4e1-6f6f-4134-9678-375d978caaf3" />
+
+<img width="1069" height="558" alt="Screenshot 2026-11-18 at 13 57 08" src="https://github.com/user-attachments/assets/e3715fc3-ed71-4406-bd55-134112fc314b" />
+
+<img width="805" height="558" alt="Screenshot 2026-11-18 at 14 02 32" src="https://github.com/user-attachments/assets/dfbcf79b-1862-4660-be7b-a55f2fa43b8d" />
+
+<img width="745" height="570" alt="Screenshot 2026-11-18 at 14 16 27" src="https://github.com/user-attachments/assets/f0077e2c-ba53-4607-b72f-f3107e4e2cf8" />
+
+<img width="1005" height="544" alt="Screenshot 2026-11-18 at 14 17 58" src="https://github.com/user-attachments/assets/74099510-383a-4dce-9a20-6151b8385fa9" />
+
+<img width="908" height="312" alt="Screenshot 2026-11-18 at 14 19 14" src="https://github.com/user-attachments/assets/683907f7-207d-42c4-80ce-e2c8e7b9e15e" />
+
+**What the plans contained:**
+
+| Workspace | Resources added |
+|---|---|
+| `novalab-entra` | `random_password.user["casey.nguyen"]`, `azuread_user.user["casey.nguyen"]`, `azuread_group_member.department["casey.nguyen"]` |
+| `novalab-okta` | `random_password.okta_user["casey.nguyen"]`, `okta_user.user["casey.nguyen"]` |
+
+<img width="1059" height="531" alt="Screenshot 2026-11-18 at 12 07 33" src="https://github.com/user-attachments/assets/0c841985-0079-496c-99bd-44e7d36b2aac" />
+
+<img width="1051" height="566" alt="Screenshot 2026-11-18 at 12 07 58" src="https://github.com/user-attachments/assets/1ec15b36-718b-4bea-8fe0-eadfefe893a8" />
+
+Okta needed no membership resource: the `NL-Security` group rule matched Casey's department automatically.
+
+**Why it matters:**
+- **One change, two systems:** the employee list is the single source of truth.
+- **No one used an admin account:** Entra and Okta were changed only by the service identities.
+- **Nothing reached production without review and approval:** a pull request, passing checks, a reviewed plan, and a confirmed apply.
+- **Full traceability:** GitHub records who proposed and merged the change; HCP Terraform records who approved the apply; Entra and Okta record which identity made each change.
+
+**Commands used (in order):**
+
+1. Start from the latest `main` and create a branch for the hire.
+   ```bash
+   git checkout main
+   git pull
+   git checkout -b hire-casey-nguyen
+   ```
+<img width="683" height="113" alt="Screenshot 2026-11-18 at 15 07 53" src="https://github.com/user-attachments/assets/48ebe142-d664-4b78-ab9f-6e8c3b6e90ee" />
+
+2. *(VS Code: added Casey Nguyen to `entra/users.yaml`.)* Stage, commit and upload.
+   ```bash
+   git add .
+   git commit -m "Hire Casey Nguyen (Security Analyst)"
+   git push -u origin hire-casey-nguyen
+   ```
+<img width="703" height="280" alt="Screenshot 2026-11-18 at 15 09 11" src="https://github.com/user-attachments/assets/145c0895-62e1-460c-9e16-6671f92ace47" />
+
+3. Open the pull request.
+   ```bash
+   gh pr create --fill
+   ```
+<img width="700" height="49" alt="Screenshot 2026-11-18 at 15 11 55" src="https://github.com/user-attachments/assets/1bb464e5-d132-438f-9852-1729e1243df7" />
+
+4. Wait for the GitHub Actions checks and the HCP Terraform plans.
+   ```bash
+   gh pr checks --watch
+   ```
+   
+<img width="706" height="118" alt="Screenshot 2026-11-18 at 15 12 28" src="https://github.com/user-attachments/assets/69a350e1-97b4-4c58-9b22-c7a15043e224" />
+
+5. After reviewing both plans, merge and update my local `main`.
+   ```bash
+   gh pr merge --merge --delete-branch
+   git pull
+   ```
+<img width="702" height="254" alt="Screenshot 2026-11-18 at 15 13 30" src="https://github.com/user-attachments/assets/33eaff42-7902-4ae9-a429-9839f3c9c47d" />
