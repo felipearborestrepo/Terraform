@@ -1505,3 +1505,118 @@ git checkout -b <branch>  →  edit  →  commit  →  push  →  pull request
     ```
 
 <img width="914" height="255" alt="Screenshot 2026-11-17 at 21 08 27" src="https://github.com/user-attachments/assets/de171d04-2dd2-492a-b113-08b3cfc80c72" />
+
+### Step 14: Plan on every pull request, approved apply after merge
+
+**Goal:** Make GitHub the only way changes reach Entra and Okta: plans on every pull request, applies only after merge and approval.
+
+**What I did:**
+1. Connected both HCP Terraform workspaces to the GitHub repository.
+2. Limited each workspace to the paths that affect it.
+3. Kept auto-apply off, so every apply waits for approval.
+4. Tested with a pull request: both workspaces posted a plan (no changes).
+5. Merged, and confirmed HCP Terraform ran from the merge commit.
+6. Confirmed `terraform apply` from my Mac is refused.
+
+<img width="1054" height="609" alt="Screenshot 2026-11-18 at 09 39 12" src="https://github.com/user-attachments/assets/f35a7eec-1566-4192-943c-c7286b37c230" />
+
+<img width="799" height="600" alt="Screenshot 2026-11-18 at 09 39 47" src="https://github.com/user-attachments/assets/ffa5b0c1-f790-4d39-b8bc-e111ac2eb575" />
+
+
+**Why it matters:**
+Before this step, anyone with access to my Mac and the workspace could apply directly. Now every identity change must be a pull request: reviewed, checked, planned, merged, and approved, with a record at each stage.
+
+**Workspace settings:**
+
+| Setting | novalab-entra | novalab-okta |
+|---|---|---|
+| Working directory | `entra` | `okta` |
+| Runs when these paths change | `entra/**` | `okta/**`, `entra/users.yaml` |
+| Plans on pull requests | Yes (speculative plans) | Yes |
+| Auto-apply | Off | Off |
+
+<img width="788" height="608" alt="Screenshot 2026-11-18 at 09 40 17" src="https://github.com/user-attachments/assets/41364506-aebb-4f99-a932-b7970c69ae7b" />
+
+<img width="799" height="578" alt="Screenshot 2026-11-18 at 09 43 48" src="https://github.com/user-attachments/assets/fb1ef9b9-095f-43bf-a7d6-81625dd0635a" />
+
+Okta also watches `entra/users.yaml` because its code reads the employee list from that file.
+
+**The full path of a change:**
+
+```
+1. Branch + edit users.yaml (or .tf files)
+2. Pull request on GitHub
+3. GitHub Actions: fmt + validate                  (no credentials)
+4. HCP Terraform: speculative plan per workspace   (as the service identities)
+5. Review the plan, merge                          (protect-main ruleset)
+6. HCP Terraform: plan on main, then waits
+7. A person clicks "Confirm & apply"               (approval gate)
+8. Apply runs as sp-terraform-novalab-entra / sp-terraform-novalab-okta
+9. Audit trail: GitHub (who proposed, who merged), HCP Terraform (who approved),
+   Entra sign-in/audit logs and Okta System Log (which identity changed what)
+```
+
+<img width="918" height="695" alt="Screenshot 2026-11-18 at 09 55 18" src="https://github.com/user-attachments/assets/7d7a26d4-192b-49e0-8c79-8b012b8ccfb2" />
+
+<img width="1067" height="605" alt="Screenshot 2026-11-18 at 09 57 31" src="https://github.com/user-attachments/assets/c9ac92e9-396e-427d-93e1-d451df38a4d5" />
+
+<img width="1059" height="606" alt="Screenshot 2026-11-18 at 09 58 39" src="https://github.com/user-attachments/assets/5cb92595-f8e5-4c93-9ed7-451538bbb197" />
+
+<img width="1048" height="604" alt="Screenshot 2026-11-18 at 09 59 23" src="https://github.com/user-attachments/assets/f3b101eb-eaca-4b3d-899c-a33bd5caba58" />
+
+<img width="1069" height="580" alt="Screenshot 2026-11-18 at 10 11 38" src="https://github.com/user-attachments/assets/d72c006d-79ef-4dab-ba17-6d070476d3f5" />
+
+**Speculative plan:** a plan that can't be applied. It shows what a pull request **would** change, before anything is merged. In Entra, it signs in with the same `run_phase:plan` federated credential as any other plan.
+
+**Key terms:**
+- **VCS-driven workflow:** HCP Terraform reacts to changes in a version control repository.
+- **Speculative plan:** a preview-only plan run for a pull request.
+- **Trigger patterns:** paths that decide which workspaces run for a change.
+- **Approval gate:** a manual confirmation required before an apply.
+
+**Commands used (in order):**
+
+1. *(HCP Terraform: connected both workspaces to GitHub, set working directories, trigger patterns and speculative plans.)* Start from the latest `main` and create a test branch.
+   ```bash
+   git checkout main
+   git pull
+   git checkout -b test-hcp-plans
+   ```
+<img width="655" height="181" alt="Screenshot 2026-11-18 at 10 51 30" src="https://github.com/user-attachments/assets/5629c449-b1a0-446f-8dbb-5702229f5962" />
+
+2. *(VS Code: added a comment to `entra/users.yaml`.)* Stage, commit and upload the branch.
+   ```bash
+   git add .
+   git commit -m "Step 14: Test plans on pull requests"
+   git push -u origin test-hcp-plans
+   ```
+
+3. Open a pull request.
+   ```bash
+   gh pr create --fill
+   ```
+
+<img width="701" height="336" alt="Screenshot 2026-11-18 at 10 54 55" src="https://github.com/user-attachments/assets/186ad7cd-b1ea-4137-932d-08cd5e5c6454" />
+
+4. Wait for the GitHub Actions checks and the HCP Terraform plans.
+   ```bash
+   gh pr checks --watch
+   ```
+<img width="709" height="112" alt="Screenshot 2026-11-18 at 11 17 00" src="https://github.com/user-attachments/assets/b3ab1d58-c7f3-4372-b62d-f0dcb2ac4917" />
+
+5. Merge and delete the branch, then update my local `main`.
+   ```bash
+   gh pr merge --merge --delete-branch
+   git pull
+   ```
+   
+<img width="706" height="307" alt="Screenshot 2026-11-18 at 11 20 15" src="https://github.com/user-attachments/assets/a655bdd4-35e5-4b80-8432-f7c9b803f979" />
+
+6. Confirm applies from my Mac are refused now that the workspace is connected to GitHub.
+   ```bash
+   cd okta
+   terraform apply
+   cd ..
+   ```
+   
+   <img width="688" height="110" alt="Screenshot 2026-11-18 at 11 21 31" src="https://github.com/user-attachments/assets/7f90bb13-858c-4292-8ccb-d60c7114616b" />
